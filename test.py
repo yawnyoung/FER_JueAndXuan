@@ -1,5 +1,6 @@
 from seq_fer_datasets import *
 from seq_fer import SFER_LSTM
+from torch.autograd import Variable
 
 
 if __name__ == '__main__':
@@ -19,14 +20,21 @@ if __name__ == '__main__':
 
     sfer_dataset = SFERDataset(video_dir_paths, label_dir_paths, transform=composed_tf)
 
-    sfer_dataloaer = DataLoader(sfer_dataset, batch_size=8, shuffle=False, collate_fn=SFERPadCollate(dim=0))
+    sfer_dataloaer = DataLoader(sfer_dataset, batch_size=8, shuffle=True, collate_fn=SFERPadCollate(dim=0))
+
+    model = SFER_LSTM()
 
     for i_batch, sample_batched in enumerate(sfer_dataloaer):
-        print(type(sample_batched))
-        for v in sample_batched[0]:
-            print(v.size())
+        # print(type(sample_batched))
+        # for v in sample_batched[0]:
+        #     print(v.size())
+        #
+        # print(sample_batched[0].size())
 
-        print(sample_batched[0].size())
+        videos, labels = sample_batched
+        # videos, labels = Variable(videos), Variable(labels)
 
-        if i_batch == 1:
+        model(sample_batched)
+
+        if i_batch == 0:
             break
