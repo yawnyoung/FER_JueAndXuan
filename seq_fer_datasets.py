@@ -151,17 +151,23 @@ class SFERDataset(Dataset):
         v_imgs = []
 
         img_names = sorted(glob.glob(os.path.join(self.video_dir_paths[idx], '*.png')))
+        # print(img_names)
 
         for img in img_names:
+            # image size (w, h)
             img = Image.open(img)
             if self.transform:
                 img = self.transform(img)
             v_imgs.append(img)
 
+            # img_arr = np.asarray(img)
+            # plt.imshow(img_arr[0, :, :], cmap='gray')
+            # plt.show()
+
         # obtain the label
         label_files = glob.glob(os.path.join(self.label_dir_paths[idx], '*.txt'))
-        print(self.label_dir_paths[idx])
-        print('number of frame: ', len(img_names))
+        # print(self.label_dir_paths[idx])
+        # print('number of frame: ', len(img_names))
         # print(label_files)
         em = 0
         with open(label_files[0]) as f:
@@ -192,7 +198,7 @@ def pad_tensor(vec, pad, dim):
 
 class SFERPadCollate:
     """
-    a variant of callate_fn that pads according to the longest sequence in
+    a variant of collate_fn that pads according to the longest sequence in
     a batch of sequences
     """
 
@@ -206,7 +212,7 @@ class SFERPadCollate:
     def pad_collate(self, batch):
         """
         args:
-            batch - list of (tensor, label)
+            batch - list of {tensor, label}
 
         reutrn:
             xs - a tensor of all examples in 'batch' after padding
@@ -227,6 +233,28 @@ class SFERPadCollate:
 
     def __call__(self, batch):
         return self.pad_collate(batch)
+
+
+class SFERListCollate:
+    """
+    a variant of collate fn that returns a list of videos with variable lengths and corresponding labels
+    """
+    def collate(self, batch):
+        """
+        collate function
+        :param batch: list of {tensor, label}
+        :return: ([videos], [labels])
+        """
+        videos = []
+        labels = []
+        for sample in batch:
+            videos.append(sample[SAMPLE_INPUT])
+            labels.append(sample[SAMPLE_TARGET])
+
+        return videos, labels
+
+    def __call__(self, batch):
+        return self.collate(batch)
 
 
 if __name__ == '__main__':

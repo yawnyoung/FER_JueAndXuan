@@ -114,28 +114,30 @@ class Sequence(nn.Module):
 
         out, hc1 = self.lstm1(seq, hc1)
         out, hc2 = self.lstm2(out, hc2)
+
         return out,  (hc1, hc2)
 
 
 if __name__ == '__main__':
     lstm = Sequence()
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(lstm.parameters(), lr=0.001)
-    for i in range(1000):
-        data = np.sin(np.linspace(0,10,100)+2*np.pi*np.random.rand())
-        xs = data[:-1]
-        ys = data[1:]
-        x = Variable(torch.FloatTensor(xs).view(-1, 1, 1))
-        y = Variable(torch.FloatTensor(ys))
-
-        optimizer.zero_grad()
-        lstm_out, _ = lstm(x)
-        loss = criterion(lstm_out[20:].view(-1), y[20:])
-        loss.backward()
-        optimizer.step()
-
-        if i % 10 == 0:
-            print("i {}, loss {}".format(i, loss.data.numpy()[0]))
+    lstm.cuda()
+    # criterion = nn.MSELoss().cuda()
+    # optimizer = optim.Adam(lstm.parameters(), lr=0.001)
+    # for i in range(1000):
+    #     data = np.sin(np.linspace(0,10,100)+2*np.pi*np.random.rand())
+    #     xs = data[:-1]
+    #     ys = data[1:]
+    #     x = Variable(torch.FloatTensor(xs).view(-1, 1, 1).cuda())
+    #     y = Variable(torch.FloatTensor(ys).cuda())
+    #
+    #     optimizer.zero_grad()
+    #     lstm_out, _ = lstm(x)
+    #     loss = criterion(lstm_out[20:].view(-1), y[20:])
+    #     loss.backward()
+    #     optimizer.step()
+    #
+    #     if i % 10 == 0:
+    #         print("i {}, loss {}".format(i, loss.data.numpy()[0]))
 
 
 
