@@ -98,6 +98,10 @@ def calc_img_dataset_mean_std(vd_paths, transform):
         img_mean = torch.mean(all_images, 0)
         img_std = torch.std(all_images, 0)
 
+        # img_mean_arr = img_mean.numpy()
+        # plt.imshow(img_mean_arr[0, :, :], cmap='gray')
+        # plt.show()
+
         return img_mean, img_std
 
     # todo: numpy array images...

@@ -26,24 +26,42 @@ def pad_tensor(vec, pad, dim):
     return torch.cat([vec, torch.zeros(*pad_size)], dim=dim)
 
 
+def pad_tensor_batch(tensor_list, tensor_lens):
+    """
+    Pad a batch of tensors with variable lengths
+    :param tensor_list: [t1, t2, ..., tN]
+    :param tensor_lens: a list of tensor lengths
+    :return:
+    """
+    # find longest length
+    max_len = max(tensor_lens)
+
+    # argument sort (descending order)
+    sorted_idx = np.argsort(-np.asarray(tensor_lens))
+
+    paddes_list = list(map(lambda idx: pad_tensor(tensor_list[idx], max_len, 0), sorted_idx))
+
+    # print(torch.stack(paddes_list).size())
+
+    return torch.stack(paddes_list), [tensor_lens[idx] for idx in sorted_idx], sorted_idx
+
+
 class SFER_LSTM(nn.Module):
 
     def __init__(self):
         super(SFER_LSTM, self).__init__()
 
-        # todo: lstm + fc layer; 2 stream; more data
-
         self.num_classes = 8
 
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=6, kernel_size=5)
         self.conv2 = nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5)
-        self.fc1 = nn.Linear(in_features=16 * 9 * 9, out_features=120)
-        self.fc2 = nn.Linear(in_features=120, out_features=84)
-        # self.fc3 = nn.Linear(in_features=84, out_features=10)
+        self.fc1 = nn.Linear(in_features=16 * 9 * 9, out_features=500)
         self.pool = nn.MaxPool2d(2, 2)
 
-        self.lstm1 = nn.LSTM(84, 32, batch_first=True)
-        self.lstm2 = nn.LSTM(32, self.num_classes, batch_first=True)
+        self.lstm1 = nn.LSTM(500, 250, batch_first=True)
+        self.lstm2 = nn.LSTM(250, 120, batch_first=True)
+
+        self.fc2 = nn.Linear(in_features=120, out_features=self.num_classes)
 
     def pad_tensor_batch(self, tensor_list, tensor_lens):
         """
@@ -62,7 +80,7 @@ class SFER_LSTM(nn.Module):
 
         # print(torch.stack(paddes_list).size())
 
-        return torch.stack(paddes_list), [tensor_lens[idx] for idx in sorted_idx]
+        return torch.stack(paddes_list), [tensor_lens[idx] for idx in sorted_idx], sorted_idx
 
     def conv_fcs(self, img_batch, seq_len):
         """
@@ -72,11 +90,11 @@ class SFER_LSTM(nn.Module):
         :return: list of features
         """
         x = self.conv1(img_batch)
-        x = F.leaky_relu(x)
+        x = F.relu(x)
         x = self.pool(x)
 
         x = self.conv2(x)
-        x = F.leaky_relu(x)
+        x = F.relu(x)
         x = self.pool(x)
 
         # print(x.size())
@@ -84,14 +102,7 @@ class SFER_LSTM(nn.Module):
         x = x.view(-1, 16 * 9 * 9)
 
         x = self.fc1(x)
-        x = F.leaky_relu(x)
-
-        x = self.fc2(x)
-        x = F.leaky_relu(x)
-
-        # x = self.fc3(x)
-
-        # print(x.size())
+        x = F.relu(x)
 
         feat_batch = []
         seq_start = 0
@@ -121,11 +132,11 @@ class SFER_LSTM(nn.Module):
         all_images = Variable(torch.cat(seq_batch[0], dim=0))
         # print(all_images.size())
 
-        # convolution-fc layers
+        # convolution layers
         img_feats = self.conv_fcs(all_images, seq_len)
 
-        # pad image features with variable lengths
-        padded_img_feats, sorted_seq_len = self.pad_tensor_batch(img_feats, seq_len)
+        # # pad image features with variable lengths
+        padded_img_feats, sorted_seq_len, sorted_idx = self.pad_tensor_batch(img_feats, seq_len)
         padded_img_feats = Variable(padded_img_feats)
         # print('padded img feats: ', padded_img_feats.size())
         packed_pad_feats = nn.utils.rnn.pack_padded_sequence(padded_img_feats, sorted_seq_len, batch_first=True)
@@ -148,7 +159,13 @@ class SFER_LSTM(nn.Module):
             # print(ret_lens[b_idx])
             last_frame_output.append(output[b_idx, ret_lens[b_idx]-1, :])
 
-        return torch.stack(last_frame_output)
+        last_frame_output = torch.stack(last_frame_output)
+        # print(last_frame_output.size())
+
+        # fc layers
+        out = self.fc2(last_frame_output)
+
+        return out, sorted_idx
 
 
 class Simple_LSTM(nn.Module):
@@ -160,23 +177,33 @@ class Simple_LSTM(nn.Module):
         self.fc2 = nn.Linear(250, 8)
 
     def forward(self, x):
-        x = x.squeeze(2)
-        seq_size = x.size()
 
-        x = x.view(seq_size[0], seq_size[1], seq_size[2] * seq_size[3])
+        batch_size = len(x[0])
 
-        out, hc1 = self.lstm1(x, None)
+        seq_len = [len(v) for v in x[0]]
 
-        out, hc2 = self.lstm2(out, None)
+        # pad videos
+        expanded_video = [v.view(v.size()[0], -1) for v in x[0]]
+        padded_img, sorted_seq_len, sorted_idx = pad_tensor_batch(expanded_video, seq_len)
+        padded_img = Variable(padded_img)
+        packed_img = nn.utils.rnn.pack_padded_sequence(padded_img, sorted_seq_len, batch_first=True)
 
-        out = self.fc1(out[:, -1, :])
+        out, hc1 = self.lstm1(packed_img)
+        out, hc2 = self.lstm2(out)
 
-        out = F.leaky_relu(out)
+        out, ret_lens = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
+
+        # last frame output
+        last_frame_output = []
+        for b_idx in range(batch_size):
+            last_frame_output.append(out[b_idx, ret_lens[b_idx]-1, :])
+
+        last_frame_output = torch.stack(last_frame_output)
+
+        # fc layers
+        out = self.fc1(last_frame_output)
+        out = F.relu(out)
 
         out = self.fc2(out)
 
-        # print(out[:, -1, :].size())
-        #
-        # print(out.size())
-
-        return out
+        return out, sorted_idx
