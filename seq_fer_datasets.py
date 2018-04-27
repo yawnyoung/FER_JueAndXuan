@@ -5,14 +5,11 @@ author: Yajue Yang
 """
 
 from __future__ import print_function
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import os
 import glob
 from PIL import Image
-from torchvision import transforms
-import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 SAMPLE_INPUT = 'video'
 SAMPLE_TARGET = 'label'
@@ -93,18 +90,11 @@ def calc_img_dataset_mean_std(vd_paths, transform):
             all_images.append(img)
 
     if isinstance(all_images[0], torch.FloatTensor):
-        # print(all_images[0])
         all_images = torch.stack(all_images)
         img_mean = torch.mean(all_images, 0)
         img_std = torch.std(all_images, 0)
 
-        # img_mean_arr = img_mean.numpy()
-        # plt.imshow(img_mean_arr[0, :, :], cmap='gray')
-        # plt.show()
-
         return img_mean, img_std
-
-    # todo: numpy array images...
 
 
 class ImgMeanStdNormalization(object):
@@ -164,15 +154,9 @@ class SFERDataset(Dataset):
                 img = self.transform(img)
             v_imgs.append(img)
 
-            # img_arr = np.asarray(img)
-            # plt.imshow(img_arr[0, :, :], cmap='gray')
-            # plt.show()
-
         # obtain the label
         label_files = glob.glob(os.path.join(self.label_dir_paths[idx], '*.txt'))
-        # print(self.label_dir_paths[idx])
-        # print('number of frame: ', len(img_names))
-        # print(label_files)
+
         em = 0
         with open(label_files[0]) as f:
             for line in f:
@@ -224,7 +208,6 @@ class SFERPadCollate:
         """
         # find longest sequence
         max_len = max(map(lambda x: x[SAMPLE_INPUT].size()[0], batch))
-        # print(max_len)
 
         # pad according to max_len
         batch = list(map(lambda x: {SAMPLE_INPUT: pad_tensor(x[SAMPLE_INPUT], max_len, self.dim), SAMPLE_TARGET: x[SAMPLE_TARGET]}, batch))
@@ -259,33 +242,3 @@ class SFERListCollate:
 
     def __call__(self, batch):
         return self.collate(batch)
-
-
-if __name__ == '__main__':
-
-    video_root_dir = r'/home/young/cv_project/cohn-kanade-images'
-
-    label_root_dir = r'/home/young/cv_project/Emotion'
-
-    video_dir_paths, label_dir_paths = get_ck_data(video_root_dir, label_root_dir)
-
-    img_size = (320, 240)
-    composed_tf = transforms.Compose([transforms.Grayscale(), transforms.Resize(img_size), transforms.ToTensor()])
-
-    img_mean, img_std = calc_img_dataset_mean_std(video_dir_paths, composed_tf)
-
-    dataset_tf = transforms.Compose([transforms.Grayscale(), transforms.Resize(img_size), transforms.ToTensor(),
-                                     ImgMeanStdNormalization(img_mean, img_std)])
-
-    sfer_dataset = SFERDataset(video_dir_paths, label_dir_paths, transform=dataset_tf)
-
-    sample = sfer_dataset.__getitem__(len(video_dir_paths) - 1)
-
-    v_imgs, label = sample[SAMPLE_INPUT], sample[SAMPLE_TARGET]
-
-    print(label)
-
-    print(v_imgs[0].size())
-    print(v_imgs[0])
-    print(torch.min(v_imgs[0]))
-    print(torch.max(v_imgs[0]))
